@@ -1,0 +1,8 @@
+apiVersion: kubeovn.io/v1
+kind: OvnEip
+metadata:
+  name: eip-ns-foo
+spec:
+  externalSubnet: external
+  type: nat
+  v4Ip: 192.168.31.200

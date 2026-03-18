@@ -1,0 +1,7 @@
+apiVersion: kubeovn.io/v1
+kind: OvnEip
+metadata:
+  name: ovn-cluster-external-lrp
+spec:
+  externalSubnet: external
+  type: lrp

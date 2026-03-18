@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ovn-external-gw-config
+  namespace: kube-system
+data:
+  enable-external-gw: "true"
+  external-gw-nodes: "hv-01"
+  type: "centralized"
+  external-gw-nic: "mgmt-br"
+  external-gw-addr: "192.168.31.1/24"

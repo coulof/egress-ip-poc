@@ -1,0 +1,8 @@
+apiVersion: kubeovn.io/v1
+kind: OvnSnatRule
+metadata:
+  name: snat-ns-foo
+spec:
+  ovnEip: eip-ns-foo
+  vpc: ovn-cluster
+  v4IpCidr: 10.55.0.0/24

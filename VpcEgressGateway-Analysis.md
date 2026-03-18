@@ -1,4 +1,4 @@
-# VpcEgressGateway on Harvester v1.7 — Analysis Report
+# Egress IP on Harvester v1.7 — Analysis Report
 
 **Date:** 2026-03-18
 **Harvester version:** v1.7.1
@@ -9,7 +9,13 @@
 
 ## Executive Summary
 
-**VpcEgressGateway does NOT work on Harvester v1.7** due to architectural incompatibilities between Harvester's dual-CNI model and VpcEgressGateway's assumptions about pod networking.
+**No Kube-OVN egress IP solution works on Harvester v1.7** due to architectural incompatibilities between Harvester's dual-CNI model and Kube-OVN's assumptions.
+
+| Approach | Status | Blocker |
+|----------|--------|---------|
+| VpcEgressGateway | ❌ BLOCKED | Gateway pod eth0 = Canal, not Kube-OVN |
+| OVN Native EIP/SNAT | ❌ BLOCKED | Routing path conflict with natOutgoing |
+| VpcNatGateway | ❌ BLOCKED | Same dual-CNI issue as VpcEgressGateway |
 
 ---
 
@@ -36,6 +42,18 @@
 | Create macvlan-subnet | ⚠️ | Required disabling Harvester webhook |
 | Create VpcEgressGateway | ✅ | CRD created successfully |
 | Gateway pod starts | ❌ | Init container crashes |
+
+### Option C: OVN Native EIP/SNAT ❌ FAILS
+
+| Step | Status | Notes |
+|------|--------|-------|
+| Create ProviderNetwork | ✅ | `external` using mgmt-br |
+| Create Vlan | ✅ | `vlan0` (untagged) |
+| Create external Subnet | ⚠️ | Required webhook bypass; auto-assigned to ovn-cluster VPC |
+| Create OvnEip | ✅ | 192.168.31.200 allocated, READY=true |
+| Create OvnSnatRule | ✅ | SNAT 10.55.0.0/24 → 192.168.31.200, READY=true |
+| VPC extraExternalSubnets | ⚠️ | Configured but lrp NOT auto-created |
+| Manual OVN lrp creation | ❌ | Breaks existing routing, VM loses connectivity |
 
 ---
 
@@ -212,6 +230,121 @@ kubectl apply -f /tmp/harvester-network-webhook-validating.yaml
 
 ---
 
+## Option C: OVN Native EIP/SNAT — Deep Dive
+
+### What OVN EIP/SNAT Expects
+
+OVN native EIP/SNAT uses OVN's built-in NAT capabilities without a gateway pod:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     OVN Logical Router                          │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────┐  │
+│  │ lrp-internal │  │ lrp-join     │  │ lrp-external         │  │
+│  │ 10.55.0.1    │  │ 100.64.0.1   │  │ 192.168.31.101       │  │
+│  └──────────────┘  └──────────────┘  └──────────────────────┘  │
+│         │                │                      │               │
+│         │                │              SNAT: 10.55.0.0/24      │
+│         │                │                  → 192.168.31.200    │
+└─────────┼────────────────┼──────────────────────┼───────────────┘
+          │                │                      │
+          ▼                ▼                      ▼
+    vm-subnet          join network         external subnet
+    (overlay)          (to node)            (underlay/localnet)
+```
+
+Traffic flow: VM → lrp-internal → SNAT → lrp-external → physical network
+
+### What Harvester Provides
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     OVN Logical Router (ovn-cluster)            │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────┐  │
+│  │ lrp-internal │  │ lrp-join     │  │ lrp-external         │  │
+│  │ 10.55.0.1    │  │ 100.64.0.1   │  │ MISSING!             │  │
+│  └──────────────┘  └──────────────┘  └──────────────────────┘  │
+│         │                │                                      │
+│         │                ▼                                      │
+│         │         natOutgoing path                              │
+│         │         (node IP SNAT)                                │
+└─────────┼────────────────┼──────────────────────────────────────┘
+          │                │
+          ▼                ▼
+    vm-subnet          join network → node → physical network
+    (overlay)              ↓
+                    SNAT to 192.168.31.68 (node IP)
+```
+
+### The Routing Path Conflict
+
+**natOutgoing flow (working):**
+```
+VM (10.55.0.5) → vm-subnet → ovn-cluster router
+  → policy route (priority 29000): reroute to 100.64.0.2
+  → join network → node's network stack
+  → iptables MASQUERADE → physical network
+  → egress IP = node IP (192.168.31.68)
+```
+
+**OVN SNAT flow (required but blocked):**
+```
+VM (10.55.0.5) → vm-subnet → ovn-cluster router
+  → lrp-external (192.168.31.101)  ← MISSING!
+  → OVN SNAT rule applies
+  → external subnet (localnet)
+  → egress IP = 192.168.31.200
+```
+
+### Why extraExternalSubnets Doesn't Create lrp
+
+The VPC `extraExternalSubnets: [external]` configuration should auto-create the router port, but fails because:
+
+1. **Subnet VPC assignment:** External subnet auto-assigned to `ovn-cluster` VPC with `provider: ovn`, treating it as overlay instead of underlay
+
+2. **Missing startup parameters:** OVN EIP/SNAT requires kube-ovn-controller args:
+   ```
+   --external-gateway-vlanid=0
+   --external-gateway-switch=external
+   ```
+   These are not configurable via kubeovn-operator on Harvester.
+
+3. **Default VPC special handling:** Controller logs show:
+   ```
+   default vpc only use extra external subnets: [external]
+   ```
+   But no lrp creation follows — the feature expects full Kube-OVN deployment, not Multus-only.
+
+### Evidence: Manual lrp Creation Breaks Routing
+
+**Commands executed:**
+```bash
+# Create router port
+ovn-nbctl lrp-add ovn-cluster ovn-cluster-external 02:ac:10:ff:01:01 192.168.31.101/24
+
+# Create switch port and link
+ovn-nbctl lsp-add external external-ovn-cluster-external
+ovn-nbctl lsp-set-type external-ovn-cluster-external router
+ovn-nbctl lsp-set-options external-ovn-cluster-external router-port=ovn-cluster-external
+
+# Set gateway chassis
+ovn-nbctl lrp-set-gateway-chassis ovn-cluster-external 92c5e833-3e30-48c2-a4b0-ee355c4c5517 20
+
+# Add SNAT rule
+ovn-nbctl lr-nat-add ovn-cluster snat 192.168.31.200 10.55.0.0/24
+
+# Add policy route for external traffic
+ovn-nbctl lr-policy-add ovn-cluster 30000 \
+  "ip4.src == 10.55.0.0/24 && ip4.dst != 10.55.0.0/24 && ip4.dst != 10.54.0.0/16 && ip4.dst != 100.64.0.0/16" \
+  reroute 192.168.31.1
+```
+
+**Result:** VM loses all network connectivity. The policy route conflicts with existing natOutgoing routing through join network.
+
+**Root cause:** The lrp-external → localnet path requires proper OVS bridge integration that Harvester's Kube-OVN deployment doesn't configure.
+
+---
+
 ## Summary Table
 
 | Component | Status | Blocker |
@@ -223,25 +356,48 @@ kubectl apply -f /tmp/harvester-network-webhook-validating.yaml
 | Gateway pod internal interface | ❌ Fails | Pod eth0 = Canal, not OVN |
 | Gateway pod initialization | ❌ Fails | Route to internal gateway unreachable |
 | VpcEgressGateway overall | ❌ Incompatible | Architectural mismatch |
+| OVN EIP/SNAT CRDs | ✅ Exist | OvnEip, OvnSnatRule present |
+| ProviderNetwork + Vlan | ✅ Created | Webhook bypass required |
+| extraExternalSubnets lrp | ❌ Not created | Missing controller integration |
+| Manual OVN lrp | ❌ Breaks routing | Conflicts with natOutgoing path |
+| OVN EIP/SNAT overall | ❌ Incompatible | Routing path conflict |
 
 ---
 
 ## Recommendations
 
-1. **Document as Known Limitation**
-   VpcEgressGateway is not compatible with Harvester v1.7's dual-CNI architecture.
+### Blocked Approaches (Do Not Pursue)
 
-2. **Alternative: iptables-snat-rules CRD**
-   May work differently (uses node's network stack). Untested.
+1. **VpcEgressGateway** — Requires pod eth0 = Kube-OVN, Harvester uses Canal
+2. **OVN Native EIP/SNAT** — Routing conflicts with natOutgoing path
+3. **VpcNatGateway** — Same dual-CNI issue as VpcEgressGateway
 
-3. **Alternative: Custom SNAT Rules**
-   Manual OVN/iptables rules on gateway node. Requires operational overhead.
+### Remaining Options (Untested)
 
-4. **Feature Request: Harvester**
-   Support Kube-OVN as primary pod CNI (not just for VMs via Multus).
+1. **Node-level iptables SNAT**
+   Configure iptables rules directly on Harvester nodes to SNAT specific source CIDRs to dedicated IPs. Bypasses Kube-OVN entirely.
+   ```bash
+   iptables -t nat -A POSTROUTING -s 10.55.0.0/24 -o mgmt-br -j SNAT --to-source 192.168.31.200
+   ```
+   **Pros:** Simple, works with existing routing
+   **Cons:** Not Kubernetes-native, requires node access, no HA
 
-5. **Feature Request: Kube-OVN**
-   VpcEgressGateway should support Multus-attached internal subnets.
+2. **External SNAT (firewall/load balancer)**
+   Perform SNAT at the upstream firewall or a dedicated SNAT appliance outside Harvester.
+   **Pros:** Decoupled from Harvester, enterprise-grade
+   **Cons:** Requires network infrastructure changes
+
+3. **Wait for Cilium CNI support**
+   Track [harvester/harvester#7197](https://github.com/harvester/harvester/issues/7197) — custom CNI at install time would enable `CiliumEgressGatewayPolicy`.
+   **Pros:** Fully supported solution
+   **Cons:** Unknown timeline, requires cluster rebuild
+
+### Feature Requests
+
+1. **Harvester:** Support Kube-OVN as primary pod CNI (not just for VMs via Multus)
+2. **Harvester:** Document OVN EIP/SNAT limitations in kubeovn-operator add-on docs
+3. **Kube-OVN:** VpcEgressGateway should support Multus-attached internal subnets
+4. **Kube-OVN:** extraExternalSubnets should work without startup parameter changes
 
 ---
 
@@ -254,4 +410,11 @@ kubectl apply -f /tmp/harvester-network-webhook-validating.yaml
 | `nad-ovn-net.yaml` | NAD for VM attachment (working) |
 | `vm-leap-15-6.yaml` | Test VM (working) |
 | `cloud-init-default.yaml` | Cloud-init template |
+| `provider-network-external.yaml` | ProviderNetwork for OVN EIP/SNAT |
+| `vlan-external.yaml` | Vlan for external network |
+| `subnet-external.yaml` | External underlay subnet |
+| `ovn-eip-ns-foo.yaml` | OvnEip allocation (192.168.31.200) |
+| `ovn-snat-rule-ns-foo.yaml` | OvnSnatRule for vm-subnet |
+| `ovn-eip-lrp.yaml` | lrp-type OvnEip (attempted) |
+| `ovn-external-gw-config.yaml` | External gateway ConfigMap |
 | `VpcEgressGateway-Analysis.md` | This document |
