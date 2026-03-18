@@ -71,5 +71,13 @@ All Kube-OVN egress IP features assume full CNI control.
 1. **Node iptables SNAT** - Manual rules on Harvester nodes
 2. **External SNAT** - Upstream firewall/load balancer
 3. **Cilium CNI** - Wait for [harvester#7197](https://github.com/harvester/harvester/issues/7197)
+4. **Harvester v1.8.0** - Wait for [harvester#9455](https://github.com/harvester/harvester/issues/9455)
+
+## Related Issues
+
+| Issue | Description | Status |
+|-------|-------------|--------|
+| [harvester#9455](https://github.com/harvester/harvester/issues/9455) | Support external connectivity for VMs on custom VPCs with Kube-OVN as secondary CNI | **v1.8.0 milestone** |
+| [harvester#7197](https://github.com/harvester/harvester/issues/7197) | Support custom CNI (Cilium) at install time | Open |
 
 See `VpcEgressGateway-Analysis.md` for full details.

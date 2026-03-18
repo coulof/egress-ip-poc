@@ -392,6 +392,11 @@ ovn-nbctl lr-policy-add ovn-cluster 30000 \
    **Pros:** Fully supported solution
    **Cons:** Unknown timeline, requires cluster rebuild
 
+4. **Wait for Harvester v1.8.0**
+   Track [harvester/harvester#9455](https://github.com/harvester/harvester/issues/9455) — VPC NAT Gateway support for Kube-OVN as secondary CNI.
+   **Pros:** Native Harvester solution, planned for v1.8.0
+   **Cons:** Requires upgrade to v1.8.0
+
 ### Feature Requests
 
 1. **Harvester:** Support Kube-OVN as primary pod CNI (not just for VMs via Multus)
