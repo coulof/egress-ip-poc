@@ -1,0 +1,4 @@
+apiVersion: kubeovn.io/v1
+kind: Vpc
+metadata:
+  name: ovn-cluster

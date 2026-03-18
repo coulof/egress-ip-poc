@@ -1,0 +1,37 @@
+# Default cloud-init configuration for Harvester VMs
+# Usage: Create a Secret from this file and reference it in VM spec
+#
+# kubectl create secret generic cloud-init-default \
+#   --from-file=userdata=cloud-init-default.yaml \
+#   -n <namespace>
+#
+# Then in VM spec:
+#   volumes:
+#     - name: cloudinitdisk
+#       cloudInitNoCloud:
+#         secretRef:
+#           name: cloud-init-default
+
+#cloud-config
+
+# Set root password (modern syntax)
+chpasswd:
+  expire: false
+  users:
+    - {name: root, password: changeme, type: text}
+
+# Enable SSH password authentication
+ssh_pwauth: true
+
+# SSH authorized keys
+ssh_authorized_keys:
+  - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEyay7snwSq9smkxPzX3FQMpfOEHfXxawh133C/+Dvi5 gonzo@psyche
+
+# Install essential packages
+package_update: true
+packages:
+  - qemu-guest-agent
+
+# Enable qemu-guest-agent for Harvester integration
+runcmd:
+  - [systemctl, enable, --now, qemu-guest-agent.service]

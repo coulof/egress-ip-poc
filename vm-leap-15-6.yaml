@@ -1,0 +1,92 @@
+apiVersion: kubevirt.io/v1
+kind: VirtualMachine
+metadata:
+  annotations:
+    harvesterhci.io/mac-address: '{"default":"e2:ed:f4:6d:a2:68"}'
+    harvesterhci.io/vmRunStrategy: RerunOnFailure
+    harvesterhci.io/volumeClaimTemplates: '[{"metadata":{"name":"leap-15-6-disk-0-j7pva","annotations":{"harvesterhci.io/imageId":"default/opensuse-leap-15-6"}},"spec":{"accessModes":["ReadWriteMany"],"resources":{"requests":{"storage":"10Gi"}},"volumeMode":"Block","storageClassName":"longhorn-opensuse-leap-15-6"}}]'
+    kubevirt.io/latest-observed-api-version: v1
+    kubevirt.io/storage-observed-api-version: v1
+    network.harvesterhci.io/ips: '[]'
+  labels:
+    harvesterhci.io/creator: harvester
+    harvesterhci.io/os: linux
+  name: leap-15-6
+  namespace: foo
+spec:
+  runStrategy: RerunOnFailure
+  template:
+    metadata:
+      annotations:
+        harvesterhci.io/sshNames: '["foo/flo"]'
+      creationTimestamp: null
+      labels:
+        harvesterhci.io/vmName: leap-15-6
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: network.harvesterhci.io/mgmt
+                operator: In
+                values:
+                - "true"
+      architecture: amd64
+      domain:
+        cpu:
+          cores: 1
+          maxSockets: 1
+          sockets: 1
+          threads: 1
+        devices:
+          disks:
+          - bootOrder: 1
+            disk:
+              bus: virtio
+            name: disk-0
+          - disk:
+              bus: virtio
+            name: cloudinitdisk
+          inputs:
+          - bus: usb
+            name: tablet
+            type: tablet
+          interfaces:
+          - macAddress: e2:ed:f4:6d:a2:68
+            model: virtio
+            name: default
+        features:
+          acpi:
+            enabled: true
+        firmware:
+          serial: 2d40f3c4-b949-4f50-9549-19cb3274dd60
+          uuid: 4ef68715-10d8-4ab6-a08c-114031604cd3
+        machine:
+          type: q35
+        memory:
+          guest: 1Gi
+        resources:
+          limits:
+            cpu: "1"
+            memory: 1Gi
+          requests:
+            cpu: 62m
+            memory: 682Mi
+      evictionStrategy: LiveMigrateIfPossible
+      hostname: leap-15-6
+      networks:
+      - multus:
+          networkName: default/ovn-net
+        name: default
+      terminationGracePeriodSeconds: 120
+      volumes:
+      - name: disk-0
+        persistentVolumeClaim:
+          claimName: leap-15-6-disk-0-j7pva
+      - cloudInitNoCloud:
+          networkDataSecretRef:
+            name: leap-15-6-soy0v
+          secretRef:
+            name: leap-15-6-soy0v
+        name: cloudinitdisk
