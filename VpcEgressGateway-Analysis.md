@@ -2,7 +2,7 @@
 
 **Date:** 2026-03-18
 **Harvester version:** v1.7.1
-**Kube-OVN version:** v1.14.10
+**Kube-OVN version:** v1.14.10 (fix requires v1.15.0+)
 **Cluster:** Single-node (hv-01)
 
 ---
@@ -399,10 +399,19 @@ ovn-nbctl lr-policy-add ovn-cluster 30000 \
 
 ### Feature Requests
 
-1. **Harvester:** Support Kube-OVN as primary pod CNI (not just for VMs via Multus)
+1. **Harvester:** Upgrade to Kube-OVN v1.15.0+ for non-primary CNI mode support
 2. **Harvester:** Document OVN EIP/SNAT limitations in kubeovn-operator add-on docs
-3. **Kube-OVN:** VpcEgressGateway should support Multus-attached internal subnets
-4. **Kube-OVN:** extraExternalSubnets should work without startup parameter changes
+
+### Upstream Fixes (Kube-OVN v1.15.0)
+
+| Issue/PR | Description |
+|----------|-------------|
+| [kubeovn#5360](https://github.com/kubeovn/kube-ovn/issues/5360) | Feature request: Kube-OVN as non-primary CNI (filed by Harvester team) |
+| [kubeovn#5618](https://github.com/kubeovn/kube-ovn/pull/5618) | PR: Added `--non-primary-cni-mode` support |
+| [kubeovn#5885](https://github.com/kubeovn/kube-ovn/issues/5885) | Bug: VPC NAT gateway not attached to tenant network |
+| [kubeovn#6017](https://github.com/kubeovn/kube-ovn/pull/6017) | Fix: Enable ip_forward for VPC NAT gateway |
+
+**Harvester v1.7.1 ships Kube-OVN v1.14.10** — these fixes are in v1.15.0.
 
 ---
 

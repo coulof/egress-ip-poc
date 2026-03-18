@@ -79,5 +79,14 @@ All Kube-OVN egress IP features assume full CNI control.
 |-------|-------------|--------|
 | [harvester#9455](https://github.com/harvester/harvester/issues/9455) | Support external connectivity for VMs on custom VPCs with Kube-OVN as secondary CNI | **v1.8.0 milestone** |
 | [harvester#7197](https://github.com/harvester/harvester/issues/7197) | Support custom CNI (Cilium) at install time | Open |
+| [kubeovn#5360](https://github.com/kubeovn/kube-ovn/issues/5360) | Feature: Kube-OVN as non-primary CNI plugin | Closed (v1.15.0) |
+| [kubeovn#5618](https://github.com/kubeovn/kube-ovn/pull/5618) | PR: Non-primary CNI mode support | Merged (v1.15.0) |
+| [kubeovn#5885](https://github.com/kubeovn/kube-ovn/issues/5885) | Bug: VPC NAT gateway not attached to tenant network | Closed (v1.15.0) |
+
+## Root Cause
+
+**Harvester v1.7.1 ships Kube-OVN v1.14.10** — one version behind the fix.
+
+Kube-OVN v1.15.0 added `--non-primary-cni-mode` which properly handles VPC NAT Gateway when Kube-OVN is not the primary CNI. This fix is not available in v1.14.10.
 
 See `VpcEgressGateway-Analysis.md` for full details.
