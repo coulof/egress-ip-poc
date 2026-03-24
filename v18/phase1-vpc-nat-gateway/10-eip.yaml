@@ -1,0 +1,8 @@
+apiVersion: kubeovn.io/v1
+kind: IptablesEIP
+metadata:
+  name: eip-egress1
+spec:
+  natGwDp: gw1
+  externalSubnet: subnetexternal
+  v4ip: 192.168.31.200

@@ -1,0 +1,19 @@
+# NOTE: Harvester webhook blocks macvlan NADs.
+# You may need to scale down the webhook deployment:
+#   kubectl -n cattle-system scale deploy harvester-webhook --replicas=0
+# Re-enable after applying:
+#   kubectl -n cattle-system scale deploy harvester-webhook --replicas=3
+apiVersion: k8s.cni.cncf.io/v1
+kind: NetworkAttachmentDefinition
+metadata:
+  name: macvlan-external
+  namespace: default
+spec:
+  config: >-
+    {
+      "cniVersion": "0.3.1",
+      "type": "macvlan",
+      "master": "mgmt-br",
+      "mode": "bridge",
+      "ipam": {}
+    }

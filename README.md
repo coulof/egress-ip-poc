@@ -73,6 +73,20 @@ All Kube-OVN egress IP features assume full CNI control.
 3. **Cilium CNI** - Wait for [harvester#7197](https://github.com/harvester/harvester/issues/7197)
 4. **Harvester v1.8.0** - Wait for [harvester#9455](https://github.com/harvester/harvester/issues/9455)
 
+## Harvester v1.8.0-rc2 (2026-03-24)
+
+Harvester v1.8.0-rc2 ships Kube-OVN v1.15.0+ with `--non-primary-cni-mode=true`,
+which should unblock all approaches that failed on v1.7.1.
+
+See [`v18/README.md`](v18/README.md) for the full runbook.
+
+| Phase | Approach | Goal |
+|-------|----------|------|
+| 1 | VpcNatGateway | Configurable egress IP (192.168.31.200) via SNAT |
+| 2 | VpcEgressGateway | Prove init crash is resolved |
+
+Manifests: `v18/phase1-vpc-nat-gateway/`, `v18/phase2-vpc-egress-gateway/`
+
 ## Related Issues
 
 | Issue | Description | Status |

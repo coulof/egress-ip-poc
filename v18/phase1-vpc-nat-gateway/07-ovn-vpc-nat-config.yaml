@@ -1,0 +1,12 @@
+# Gateway image must match the cluster's Kube-OVN version.
+# Check with:
+#   kubectl get deploy -n kube-system kube-ovn-controller \
+#     -o jsonpath='{.spec.template.spec.containers[0].image}'
+# and update the tag below accordingly.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ovn-vpc-nat-config
+  namespace: kube-system
+data:
+  image: docker.io/kubeovn/vpc-nat-gateway:v1.15.0
