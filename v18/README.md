@@ -220,37 +220,95 @@ kubectl delete -f phase1-vpc-nat-gateway/00-vpc.yaml --ignore-not-found
 
 ## Network Topology
 
+### Phase 1: VpcNatGateway
+
+Gateway pod with 3 NICs (eth0=Canal, net1=overlay, net2=external) bridges
+a custom VPC overlay to the physical network via ProviderNetwork + Vlan + underlay Subnet.
+SNAT is performed by iptables inside the gateway pod.
+
 ```
-                                   ┌──────────────────────┐
-                                   │     Internet         │
-                                   └──────────┬───────────┘
-                                              │
-                                   ┌──────────┴───────────┐
-                                   │  Router 192.168.31.1 │
-                                   └──────────┬───────────┘
-                                              │
-                              ┌───────────────┴──────────────────┐
-                              │  Physical: mgmt-br (untagged)    │
-                              │  Subnet: 192.168.31.0/24         │
-                              └───────────────┬──────────────────┘
-                                              │
-                     ┌────────────────────────┴────────────────────────┐
-                     │                                                 │
-          ┌──────────┴───────────┐                         ┌───────────┴──────────┐
-          │  Harvester Node(s)   │                         │  VpcNatGateway gw1   │
-          │  192.168.31.x        │                         │  net2: 192.168.31.200│
-          └──────────────────────┘                         │  net1: 172.20.10.254 │
-                                                           └───────────┬──────────┘
-                                                                       │
-                                                           ┌───────────┴──────────┐
-                                                           │  Overlay (Kube-OVN)  │
-                                                           │  172.20.10.0/24      │
-                                                           └───────────┬──────────┘
-                                                                       │
-                                                           ┌───────────┴──────────┐
-                                                           │  VM: test-egress     │
-                                                           │  172.20.10.x         │
-                                                           │  curl ifconfig.me    │
-                                                           │   → 192.168.31.200   │
-                                                           └──────────────────────┘
+                                ┌──────────────────────┐
+                                │      Internet        │
+                                └──────────┬───────────┘
+                                           │
+                                ┌──────────┴───────────┐
+                                │  Router 192.168.31.1 │
+                                └──────────┬───────────┘
+                                           │
+                       ┌───────────────────┴───────────────────┐
+                       │  Physical: mgmt-br (untagged)         │
+                       │  subnetexternal: 192.168.31.0/24      │
+                       │  ProviderNetwork pn-mgmt + vlan0-mgmt │
+                       └───────────────────┬───────────────────┘
+                                           │
+                  ┌────────────────────────┴──────────────────────┐
+                  │                                                │
+       ┌──────────┴───────────┐                      ┌─────────────┴────────────┐
+       │  Harvester Node(s)   │                      │  vpc-nat-gw-gw1-0 pod   │
+       │  192.168.31.x        │                      │  net2: 192.168.31.200    │
+       └──────────────────────┘                      │  net1: 172.20.10.254    │
+                                                     │  iptables SNAT          │
+                                                     └─────────────┬───────────┘
+                                                                   │
+                                                     ┌─────────────┴───────────┐
+                                                     │  Overlay (Kube-OVN)     │
+                                                     │  subnetinternal         │
+                                                     │  172.20.10.0/24         │
+                                                     │  VPC: commonvpc         │
+                                                     └─────────────┬───────────┘
+                                                                   │
+                                                     ┌─────────────┴───────────┐
+                                                     │  VM: test-egress        │
+                                                     │  172.20.10.x            │
+                                                     │  default gw: .254       │
+                                                     │  curl ifconfig.me       │
+                                                     │   → 192.168.31.200      │
+                                                     └─────────────────────────┘
 ```
+
+### Phase 2: VpcEgressGateway
+
+Gateway pod with 2 NICs (eth0=Canal + Kube-OVN secondary, net1=macvlan).
+No ProviderNetwork/Vlan needed — macvlan attaches directly to mgmt-br.
+SNAT is performed by the gateway pod's init script (OVN-managed).
+
+```
+                                ┌──────────────────────┐
+                                │      Internet        │
+                                └──────────┬───────────┘
+                                           │
+                                ┌──────────┴───────────┐
+                                │  Router 192.168.31.1 │
+                                └──────────┬───────────┘
+                                           │
+                       ┌───────────────────┴───────────────────┐
+                       │  Physical: mgmt-br (untagged)         │
+                       │  192.168.31.0/24                      │
+                       └───────────────────┬───────────────────┘
+                                           │
+                  ┌────────────────────────┴──────────────────────┐
+                  │                                                │
+       ┌──────────┴───────────┐                      ┌─────────────┴────────────┐
+       │  Harvester Node(s)   │                      │  egress-default pod      │
+       │  192.168.31.x        │                      │  net1: macvlan on mgmt-br│
+       └──────────────────────┘                      │   192.168.31.201 (auto)  │
+                                                     │  eth0: Canal + OVN       │
+                                                     │   secondary (overlay)    │
+                                                     └─────────────┬───────────┘
+                                                                   │
+                                                     ┌─────────────┴───────────┐
+                                                     │  Overlay (Kube-OVN)     │
+                                                     │  subnetinternal         │
+                                                     │  172.20.10.0/24         │
+                                                     │  VPC: ovn-cluster       │
+                                                     └─────────────┬───────────┘
+                                                                   │
+                                                     ┌─────────────┴───────────┐
+                                                     │  VM on overlay          │
+                                                     │  172.20.10.x            │
+                                                     └─────────────────────────┘
+```
+
+Key differences:
+- **Phase 1** uses a custom VPC (`commonvpc`) + ProviderNetwork + Vlan + underlay Subnet + iptables EIP/SNAT
+- **Phase 2** uses the default VPC (`ovn-cluster`) + macvlan NAD directly on mgmt-br — no ProviderNetwork stack needed
