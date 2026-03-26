@@ -67,7 +67,7 @@ Error: Nexthop has invalid gateway.
 
 Pod annotations set by controller:
 ```
-k8s.v1.cni.cncf.io/networks: default/egress-ext    # external ONLY
+k8s.v1.cni.cncf.io/networks: default/egress-external    # external ONLY
 ovn.kubernetes.io/logical_switch: ovn-default        # ignored in non-primary mode
 ```
 
@@ -111,14 +111,14 @@ After the CRD creates the Deployment, patch it to add the internal NAD:
 kubectl patch deployment -n default egress-default --type=json -p '[
   {"op":"add",
    "path":"/spec/template/metadata/annotations/v1.multus-cni.io~1default-network",
-   "value":"default/ovn-internal"},
+   "value":"default/egress-internal"},
   {"op":"replace",
    "path":"/spec/template/metadata/annotations/k8s.v1.cni.cncf.io~1networks",
-   "value":"default/ovn-internal, default/egress-ext"}
+   "value":"default/egress-internal, default/egress-external"}
 ]'
 ```
 
-This requires a pre-existing kube-ovn NAD (`ovn-internal`) for the internal subnet.
+This requires a pre-existing kube-ovn NAD (`egress-internal`) for the internal subnet.
 
 After patch, the gateway pod works correctly:
 ```

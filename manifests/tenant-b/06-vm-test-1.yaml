@@ -82,7 +82,7 @@ spec:
       networks:
         - name: overlay
           multus:
-            networkName: tenant-b/ovn-internal
+            networkName: tenant-b/egress-internal
       terminationGracePeriodSeconds: 120
       volumes:
         - name: disk-0

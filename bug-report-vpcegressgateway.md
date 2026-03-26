@@ -45,7 +45,7 @@ File: [`pkg/controller/vpc_egress_gateway.go`](https://github.com/kubeovn/kube-o
 
 ```go
 // Line ~396: only the external subnet's NAD is added
-annotations[nadv1.NetworkAttachmentAnnot] = attachmentNetworkName  // e.g. "default/egress-ext"
+annotations[nadv1.NetworkAttachmentAnnot] = attachmentNetworkName  // e.g. "default/egress-external"
 ```
 
 The `attachmentNetworkName` is derived solely from the **external** subnet's provider (lines 298-309).
@@ -120,7 +120,7 @@ fails because 10.54.0.1 is not a valid next-hop on the Canal interface.
 ### Pod annotations (set by controller)
 
 ```yaml
-k8s.v1.cni.cncf.io/networks: default/egress-ext          # external ONLY
+k8s.v1.cni.cncf.io/networks: default/egress-external          # external ONLY
 ovn.kubernetes.io/logical_switch: ovn-default              # ignored in non-primary mode
 ```
 
@@ -129,7 +129,7 @@ ovn.kubernetes.io/logical_switch: ovn-default              # ignored in non-prim
 ```json
 [
   {"name": "k8s-pod-network", "interface": "eth0", "ips": ["10.52.0.80"]},
-  {"name": "default/egress-ext", "interface": "net1", "ips": ["192.168.31.101"]}
+  {"name": "default/egress-external", "interface": "net1", "ips": ["192.168.31.101"]}
 ]
 ```
 
@@ -150,9 +150,9 @@ The Deployment created by the CRD is patched to add the internal OVN NAD:
 ```bash
 kubectl patch deployment -n default egress-default --type=json -p '[
   {"op":"add","path":"/spec/template/metadata/annotations/v1.multus-cni.io~1default-network",
-   "value":"default/ovn-internal"},
+   "value":"default/egress-internal"},
   {"op":"replace","path":"/spec/template/metadata/annotations/k8s.v1.cni.cncf.io~1networks",
-   "value":"default/ovn-internal, default/egress-ext"}
+   "value":"default/egress-internal, default/egress-external"}
 ]'
 ```
 
@@ -166,8 +166,8 @@ does for VpcNatGateway at the controller level.
 ### Pod annotations (after patch)
 
 ```yaml
-v1.multus-cni.io/default-network: default/ovn-internal    # ADDED by patch
-k8s.v1.cni.cncf.io/networks: default/ovn-internal, default/egress-ext  # PATCHED
+v1.multus-cni.io/default-network: default/egress-internal    # ADDED by patch
+k8s.v1.cni.cncf.io/networks: default/egress-internal, default/egress-external  # PATCHED
 ovn.kubernetes.io/logical_switch: egress-internal          # still set by controller
 ```
 

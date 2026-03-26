@@ -72,8 +72,8 @@ through the gateway pod.
 
 1. **ProviderNetwork** (`pn-external`) takes over `eth1` and creates an OVS bridge
 2. Each namespace gets:
-   - A **kube-ovn overlay NAD** (`ovn-internal`) for VPC internal traffic
-   - A **kube-ovn underlay NAD** (`egress-ext`) for external traffic via eth1
+   - A **kube-ovn overlay NAD** (`egress-internal`) for VPC internal traffic
+   - A **kube-ovn underlay NAD** (`egress-external`) for external traffic via eth1
    - Matching **Subnets** for IP allocation
    - A **VpcEgressGateway** CRD that creates a gateway Deployment
 3. The gateway pod gets 3 interfaces:

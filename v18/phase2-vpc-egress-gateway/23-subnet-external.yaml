@@ -6,7 +6,7 @@ spec:
   protocol: IPv4
   cidrBlock: 192.168.31.0/24
   gateway: 192.168.31.1
-  provider: egress-ext.default.ovn
+  provider: egress-external.default.ovn
   vlan: vlan0-ext
   vpc: ovn-cluster
   natOutgoing: false

@@ -10,5 +10,5 @@ spec:
     - 172.20.10.1
   natOutgoing: false
   private: false
-  provider: ovn-internal.default.ovn
+  provider: egress-internal.default.ovn
   vpc: ovn-cluster

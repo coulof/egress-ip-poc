@@ -28,7 +28,7 @@ kubectl patch deployment -n "$NAMESPACE" "$VEG_NAME" --type=json -p "[
   {
     \"op\": \"add\",
     \"path\": \"/spec/template/metadata/annotations/v1.multus-cni.io~1default-network\",
-    \"value\": \"${NAMESPACE}/ovn-internal\"
+    \"value\": \"${NAMESPACE}/egress-internal\"
   }
 ]"
 

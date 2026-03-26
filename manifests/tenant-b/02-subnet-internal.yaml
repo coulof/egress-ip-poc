@@ -10,5 +10,5 @@ spec:
     - 172.20.20.1
   natOutgoing: false
   private: false
-  provider: ovn-internal.tenant-b.ovn
+  provider: egress-internal.tenant-b.ovn
   vpc: ovn-cluster
