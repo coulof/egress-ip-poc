@@ -128,6 +128,8 @@ egress-default   Completed   true    ["172.20.10.2"]   ["192.168.31.102"]
 
 ## Related
 
-- #5885 — Same class of bug for VpcNatGateway
-- #6212 — Fix for VpcNatGateway (equivalent fix needed)
-- #5360 — Non-primary CNI plugin feature request
+- [#5885](https://github.com/kubeovn/kube-ovn/issues/5885) — Same class of bug for VpcNatGateway
+- [#6212](https://github.com/kubeovn/kube-ovn/pull/6212) — Fix for VpcNatGateway (equivalent fix needed)
+- [#5360](https://github.com/kubeovn/kube-ovn/issues/5360) — Non-primary CNI plugin feature request
+- [#5618](https://github.com/kubeovn/kube-ovn/pull/5618) — Non-primary CNI mode support PR
+- [harvester#9455](https://github.com/harvester/harvester/issues/9455) — External connectivity for VMs on custom VPCs
