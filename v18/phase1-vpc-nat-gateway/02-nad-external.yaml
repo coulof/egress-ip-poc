@@ -8,7 +8,7 @@ spec:
     {
       "cniVersion": "0.3.1",
       "name": "vswitchexternal",
-      "master": "mgmt-br",
+      "master": "eth1",
       "type": "kube-ovn",
       "server_socket": "/run/openvswitch/kube-ovn-daemon.sock",
       "provider": "vswitchexternal.kube-system.ovn"

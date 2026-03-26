@@ -1,0 +1,17 @@
+# NOTE: Harvester webhook rejects 2-part providers on subnets.
+# Temporarily delete harvester-network-webhook validating config before applying.
+apiVersion: kubeovn.io/v1
+kind: Subnet
+metadata:
+  name: egress-external-b
+spec:
+  protocol: IPv4
+  cidrBlock: 192.168.31.0/24
+  gateway: 192.168.31.1
+  provider: egress-ext.tenant-b.ovn
+  vlan: vlan0-ext
+  vpc: ovn-cluster
+  natOutgoing: false
+  excludeIps:
+    - 192.168.31.1..192.168.31.149
+    - 192.168.31.160..192.168.31.254

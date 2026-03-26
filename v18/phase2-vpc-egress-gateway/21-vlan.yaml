@@ -1,0 +1,7 @@
+apiVersion: kubeovn.io/v1
+kind: Vlan
+metadata:
+  name: vlan0-ext
+spec:
+  id: 0
+  provider: pn-external

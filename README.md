@@ -1,106 +1,197 @@
-# Egress IP PoC - Kube-OVN on Harvester v1.7
+# Per-Namespace Egress IPs on Harvester using Kube-OVN VpcEgressGateway
 
-**Date:** 2026-03-18
-**Status:** ALL APPROACHES **BLOCKED** - architectural incompatibility
+Configurable egress IP per namespace on Harvester v1.8.0-rc2 using
+Kube-OVN's [VpcEgressGateway](https://kube-ovn.readthedocs.io/zh-cn/latest/en/vpc/vpc-egress-gateway/) CRD.
 
-## Files
+Each tenant namespace gets its own egress gateway with a dedicated external IP.
+All pods in that namespace exit to the physical network via SNAT through the gateway.
 
-| File | Description |
-|------|-------------|
-| `VpcEgressGateway-Analysis.md` | Full technical analysis |
-| `vpc-ovn-cluster.yaml` | Default Kube-OVN VPC |
-| `subnet-vm-subnet.yaml` | VM subnet (10.55.0.0/24) with natOutgoing + DHCP |
-| `nad-ovn-net.yaml` | NetworkAttachmentDefinition for VM attachment |
-| `vm-leap-15-6.yaml` | Test VM definition |
-| `cloud-init-default.yaml` | Reusable cloud-init template |
-| `provider-network-external.yaml` | ProviderNetwork for OVN EIP/SNAT |
-| `vlan-external.yaml` | Vlan for external network |
-| `subnet-external.yaml` | External underlay subnet |
-| `ovn-eip-ns-foo.yaml` | OvnEip allocation |
-| `ovn-snat-rule-ns-foo.yaml` | OvnSnatRule for vm-subnet |
-| `ovn-external-gw-config.yaml` | External gateway ConfigMap |
+| Tenant | Egress IP | Internal Subnet |
+|--------|-----------|-----------------|
+| tenant-a | 192.168.31.101 | 172.20.10.0/24 |
+| tenant-b | 192.168.31.150 | 172.20.20.0/24 |
 
-## Results Summary
+## Prerequisites
 
-### Option A: Kube-OVN Overlay + natOutgoing ✅
+- **Harvester v1.8.0-rc2** with kubeovn-operator addon enabled
+- `--non-primary-cni-mode=true` (set by default by the addon)
+- **Dedicated NIC** (`eth1`) on the same L2 network as management
+- **Hyper-V MAC address spoofing enabled** on the dedicated NIC
+  (VM Settings > Network Adapter > Advanced Features > Enable MAC address spoofing)
 
-- VM attached to Kube-OVN overlay: **working**
-- natOutgoing egress to internet: **working**
-- Egress IP: node IP (192.168.31.68) - **NOT configurable**
-
-### Option B: VpcEgressGateway ❌
-
-- VpcEgressGateway CRD exists: **yes**
-- Gateway pod starts: **no - init crash**
-- Root cause: Pod eth0 = Canal, not Kube-OVN
-
-### Option C: OVN Native EIP/SNAT ❌
-
-- ProviderNetwork + Vlan + Subnet: **created** (webhook bypass required)
-- OvnEip + OvnSnatRule: **created, READY=true**
-- VPC extraExternalSubnets lrp: **NOT auto-created**
-- Manual OVN lrp creation: **breaks routing, VM loses connectivity**
-- Root cause: Routing path conflict with natOutgoing
-
-## Key Finding
+## Network Topology
 
 ```
-Harvester's Kube-OVN integration is VM-only via Multus.
-All Kube-OVN egress IP features assume full CNI control.
-
-┌─────────────────────────────────────────────────────┐
-│              What Works                             │
-├─────────────────────────────────────────────────────┤
-│  VM → Kube-OVN overlay → natOutgoing → node IP     │
-│                                                     │
-│  Egress IP = 192.168.31.68 (node)                  │
-│  NOT configurable per-namespace                     │
-└─────────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────────┐
-│              What's Blocked                         │
-├─────────────────────────────────────────────────────┤
-│  VpcEgressGateway: pod eth0 ≠ Kube-OVN             │
-│  OVN EIP/SNAT: lrp not created, routing conflict   │
-│  VpcNatGateway: same dual-CNI issue                │
-└─────────────────────────────────────────────────────┘
+                             ┌──────────────────────┐
+                             │      Internet        │
+                             └──────────┬───────────┘
+                                        │
+                             ┌──────────┴───────────┐
+                             │  Router 192.168.31.1 │
+                             └──────────┬───────────┘
+                                        │
+                    ┌───────────────────┴───────────────────┐
+                    │   Physical Network 192.168.31.0/24    │
+                    └───┬───────────────────────────────┬───┘
+                        │                               │
+               ┌────────┴────────┐             ┌────────┴────────┐
+               │ eth0 (mgmt)     │             │ eth1 (external) │
+               │ 192.168.31.68   │             │ ProviderNetwork │
+               └─────────────────┘             └────────┬────────┘
+                                                        │
+                                          ┌─────────────┴─────────────┐
+                                          │                           │
+                                ┌─────────┴──────────┐   ┌───────────┴────────┐
+                                │ egress-tenant-a     │   │ egress-tenant-b    │
+                                │ eth0: 172.20.10.x   │   │ eth0: 172.20.20.x  │
+                                │ net2: 192.168.31.101│   │ net2: 192.168.31.150│
+                                └─────────┬──────────┘   └───────────┬────────┘
+                                          │                           │
+                             ┌────────────┴───────────────────────────┴──────┐
+                             │          OVN Logical Router (ovn-cluster)     │
+                             └────────────┬───────────────────────────┬─────┘
+                                          │                           │
+                                ┌─────────┴──────┐          ┌────────┴───────┐
+                                │  Tenant-A VMs  │          │  Tenant-B VMs  │
+                                │  → 31.101      │          │  → 31.150      │
+                                └────────────────┘          └────────────────┘
 ```
 
-## Remaining Options
+## Quick Start
 
-1. **Node iptables SNAT** - Manual rules on Harvester nodes
-2. **External SNAT** - Upstream firewall/load balancer
-3. **Cilium CNI** - Wait for [harvester#7197](https://github.com/harvester/harvester/issues/7197)
-4. **Harvester v1.8.0** - Wait for [harvester#9455](https://github.com/harvester/harvester/issues/9455)
+### 1. Infrastructure (once)
 
-## Harvester v1.8.0-rc2 (2026-03-24)
+```bash
+kubectl apply -f manifests/infra/
+# Wait for ProviderNetwork to be READY
+kubectl get provider-networks.kubeovn.io pn-external
+```
 
-Harvester v1.8.0-rc2 ships Kube-OVN v1.15.0+ with `--non-primary-cni-mode=true`,
-which should unblock all approaches that failed on v1.7.1.
+### 2. Tenant-A
 
-See [`v18/README.md`](v18/README.md) for the full runbook.
+```bash
+kubectl apply -f manifests/tenant-a/00-namespace.yaml
+kubectl apply -f manifests/tenant-a/01-nad-internal.yaml
+kubectl apply -f manifests/tenant-a/02-subnet-internal.yaml
 
-| Phase | Approach | Goal |
-|-------|----------|------|
-| 1 | VpcNatGateway | Configurable egress IP (192.168.31.200) via SNAT |
-| 2 | VpcEgressGateway | Prove init crash is resolved |
+# External NAD/Subnet may require temporarily disabling Harvester webhook
+# See "Known Issues" below
+kubectl apply -f manifests/tenant-a/03-nad-external.yaml
+kubectl apply -f manifests/tenant-a/04-subnet-external.yaml
 
-Manifests: `v18/phase1-vpc-nat-gateway/`, `v18/phase2-vpc-egress-gateway/`
+kubectl apply -f manifests/tenant-a/05-vpc-egress-gateway.yaml
+
+# Apply workaround for controller bug
+./manifests/patch-deployment.sh tenant-a egress-tenant-a
+
+# Deploy test VMs
+kubectl apply -f manifests/tenant-a/06-vm-test-1.yaml
+kubectl apply -f manifests/tenant-a/07-vm-test-2.yaml
+```
+
+### 3. Tenant-B
+
+```bash
+kubectl apply -f manifests/tenant-b/00-namespace.yaml
+kubectl apply -f manifests/tenant-b/01-nad-internal.yaml
+kubectl apply -f manifests/tenant-b/02-subnet-internal.yaml
+
+# External NAD/Subnet may require temporarily disabling Harvester webhook
+kubectl apply -f manifests/tenant-b/03-nad-external.yaml
+kubectl apply -f manifests/tenant-b/04-subnet-external.yaml
+
+kubectl apply -f manifests/tenant-b/05-vpc-egress-gateway.yaml
+
+# Apply workaround for controller bug
+./manifests/patch-deployment.sh tenant-b egress-tenant-b
+
+# Deploy test VM
+kubectl apply -f manifests/tenant-b/06-vm-test-1.yaml
+```
+
+## Verification
+
+### Overview of all resources
+
+```bash
+# Egress gateways
+kubectl get vpc-egress-gateways.kubeovn.io -A -o wide
+
+# Gateway pods
+kubectl get pods -A -l app=vpc-egress-gateway -o wide
+
+# Virtual machines
+kubectl get vmi -A -o wide
+
+# Subnets
+kubectl get subnets.kubeovn.io
+
+# Network attachments
+kubectl get net-attach-def -A
+
+# ProviderNetwork
+kubectl get provider-networks.kubeovn.io
+```
+
+### Connectivity tests
+
+```bash
+# Gateway can reach internet
+kubectl exec -n tenant-a deploy/egress-tenant-a -c gateway -- ping -c 2 8.8.8.8
+
+# From VM console: ping should work via egress gateway
+ping 8.8.8.8
+
+# Wireshark on Hyper-V (eth1 NIC) to verify SNAT:
+#   Capture filter: host 192.168.31.101
+#   Traffic from tenant-a VMs should appear with src 192.168.31.101
+```
+
+> **Note:** Since 192.168.31.x is a private IP behind a NAT router, `curl ifconfig.me`
+> returns the router's WAN IP. Use Wireshark to verify the egress IP on the LAN side.
+
+## Known Issues
+
+### 1. VpcEgressGateway controller bug (requires workaround)
+
+The controller doesn't attach the internal OVN subnet as a Multus NAD in
+`--non-primary-cni-mode`. The `patch-deployment.sh` script fixes this by adding
+the internal NAD to the pod's Multus annotations.
+
+See [bug-report-vpcegressgateway.md](bug-report-vpcegressgateway.md) for full details.
+
+### 2. Harvester webhook restrictions
+
+- **NAD types:** only `bridge` and `kube-ovn` (macvlan rejected)
+- **Subnet providers:** must be 3-part `name.namespace.ovn`
+- **Workaround:** temporarily delete `harvester-network-webhook` validating/mutating configs
+
+### 3. Hyper-V MAC spoofing
+
+Must be enabled on the dedicated NIC. Without it, OVS sends packets with
+pod MACs that Hyper-V silently drops.
+
+## Directory Structure
+
+```
+manifests/                              # Production manifests (the working setup)
+  infra/                                # Shared ProviderNetwork + VLAN
+  tenant-a/                             # NADs, subnets, gateway, 2 VMs
+  tenant-b/                             # NADs, subnets, gateway, 1 VM
+  patch-deployment.sh                   # Workaround for controller bug
+  cloud-init.yaml                       # Shared cloud-init template
+bug-report-vpcegressgateway.md          # Detailed bug report with source analysis
+github-issue-vpcegressgateway.md        # Draft for upstream issue on kubeovn/kube-ovn
+v17/                                    # Harvester v1.7 analysis (all blocked)
+v18/                                    # v1.8 testing journey (historical archive)
+```
 
 ## Related Issues
 
 | Issue | Description | Status |
 |-------|-------------|--------|
-| [harvester#9455](https://github.com/harvester/harvester/issues/9455) | Support external connectivity for VMs on custom VPCs with Kube-OVN as secondary CNI | **v1.8.0 milestone** |
-| [harvester#7197](https://github.com/harvester/harvester/issues/7197) | Support custom CNI (Cilium) at install time | Open |
-| [kubeovn#5360](https://github.com/kubeovn/kube-ovn/issues/5360) | Feature: Kube-OVN as non-primary CNI plugin | Closed (v1.15.0) |
-| [kubeovn#5618](https://github.com/kubeovn/kube-ovn/pull/5618) | PR: Non-primary CNI mode support | Merged (v1.15.0) |
-| [kubeovn#5885](https://github.com/kubeovn/kube-ovn/issues/5885) | Bug: VPC NAT gateway not attached to tenant network | Closed (v1.15.0) |
-
-## Root Cause
-
-**Harvester v1.7.1 ships Kube-OVN v1.14.10** — one version behind the fix.
-
-Kube-OVN v1.15.0 added `--non-primary-cni-mode` which properly handles VPC NAT Gateway when Kube-OVN is not the primary CNI. This fix is not available in v1.14.10.
-
-See `VpcEgressGateway-Analysis.md` for full details.
+| [harvester#9455](https://github.com/harvester/harvester/issues/9455) | External connectivity for VMs on custom VPCs | v1.8.0 milestone |
+| [kubeovn#5360](https://github.com/kubeovn/kube-ovn/issues/5360) | Kube-OVN as non-primary CNI plugin | Closed (v1.15.0) |
+| [kubeovn#6212](https://github.com/kubeovn/kube-ovn/pull/6212) | Fix VpcNatGateway default network | Merged (v1.15.5) |
+| [kubeovn#5885](https://github.com/kubeovn/kube-ovn/issues/5885) | VpcNatGateway tenant network not attached | Closed |
+| VpcEgressGateway in non-primary-cni | **Not yet filed** — see [bug report](bug-report-vpcegressgateway.md) / [issue draft](github-issue-vpcegressgateway.md) | Pending |

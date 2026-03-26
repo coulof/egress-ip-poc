@@ -136,13 +136,40 @@ SSH into the VM (via console or virtctl) and run:
 ip route
 # Expect: default via 172.20.10.254
 
-# Test egress IP
-curl -s ifconfig.me
-# Expect: 192.168.31.200 (NOT the node IP)
-
-# Alternative check
-curl -s https://api.ipify.org
+# Verify traffic reaches the internet through the gateway
+traceroute -n 8.8.8.8
+# First hop should be 172.20.10.254 (the NAT gateway), NOT a node IP
 ```
+
+Since 192.168.31.200 is a private IP, `curl ifconfig.me` will return the router's
+WAN IP — it does NOT prove which source IP was used on the LAN side. Instead, verify
+the SNAT is applied by checking from the gateway pod and Wireshark on the Hyper-V vSwitch:
+
+```bash
+# 1. Confirm iptables SNAT rule in the gateway pod
+kubectl exec -n kube-system vpc-nat-gw-gw1-0 -- iptables-legacy-save -t nat | grep SNAT
+# Expect: -A SHARED_SNAT -s 172.20.10.0/24 -o net2 -j SNAT --to-source 192.168.31.200
+```
+
+**2. Wireshark on the Hyper-V host** — capture on the vSwitch / external NIC while
+the VM generates traffic (e.g. `curl -s http://example.com` from the test-egress VM):
+
+```
+SNAT working (traffic from VM exits as 192.168.31.200):
+  host 192.168.31.200 and src host 192.168.31.200
+
+SNAT NOT working (traffic leaks with overlay IP):
+  host 192.168.31.200 or net 172.20.10.0/24
+
+Full picture — gateway + VM + router:
+  host 192.168.31.200 or net 172.20.10.0/24
+
+Response traffic back to gateway:
+  dst host 192.168.31.200
+```
+
+If SNAT is working correctly, you should see **only 192.168.31.200** as source on the
+wire — no 172.20.10.x addresses should appear on the physical segment.
 
 ### Risk: ProviderNetwork on mgmt-br
 

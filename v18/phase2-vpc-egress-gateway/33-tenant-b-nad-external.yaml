@@ -1,0 +1,16 @@
+# NOTE: Harvester webhook rejects this NAD because provider doesn't match namespace.
+# Temporarily delete harvester-network-webhook validating/mutating configs before applying.
+apiVersion: k8s.cni.cncf.io/v1
+kind: NetworkAttachmentDefinition
+metadata:
+  name: egress-ext
+  namespace: tenant-b
+spec:
+  config: >-
+    {
+      "cniVersion": "0.3.1",
+      "name": "egress-ext",
+      "type": "kube-ovn",
+      "server_socket": "/run/openvswitch/kube-ovn-daemon.sock",
+      "provider": "egress-ext.tenant-b.ovn"
+    }

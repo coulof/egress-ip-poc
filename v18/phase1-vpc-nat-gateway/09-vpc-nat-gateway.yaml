@@ -2,8 +2,6 @@ apiVersion: kubeovn.io/v1
 kind: VpcNatGateway
 metadata:
   name: gw1
-  annotations:
-    k8s.v1.cni.cncf.io/networks: default/vswitchinternal
 spec:
   vpc: commonvpc
   subnet: subnetinternal

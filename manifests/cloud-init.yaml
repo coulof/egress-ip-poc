@@ -1,0 +1,19 @@
+#cloud-config
+users:
+  - default
+  - name: opensuse
+    groups: wheel
+    lock_passwd: false
+    passwd: $y$j9T$2QWCRp2ljG.y0d3Kp/eLm/$4g/WcpvcgZSQO4MALxSgvLwujMt7GFV.ITlBEpydAbB
+    sudo: "ALL=(ALL) NOPASSWD:ALL"
+    shell: /bin/bash
+    ssh_authorized_keys:
+      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAqqOTnQH64QLG3W7Zz93lNfYHUfO5JJtM724URLkjZm coulof@suse
+ssh_pwauth: true
+package_update: true
+packages:
+  - qemu-guest-agent
+  - curl
+  - traceroute
+runcmd:
+  - [systemctl, enable, --now, qemu-guest-agent.service]

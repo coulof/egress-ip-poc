@@ -1,0 +1,16 @@
+apiVersion: kubeovn.io/v1
+kind: VpcEgressGateway
+metadata:
+  name: egress-tenant-b
+  namespace: tenant-b
+spec:
+  vpc: ovn-cluster
+  replicas: 1
+  internalSubnet: egress-internal-b
+  externalSubnet: egress-external-b
+  externalIPs:
+    - 192.168.31.150
+  policies:
+    - snat: true
+      subnets:
+        - ovn-default

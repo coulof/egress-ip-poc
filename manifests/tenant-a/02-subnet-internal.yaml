@@ -1,0 +1,14 @@
+apiVersion: kubeovn.io/v1
+kind: Subnet
+metadata:
+  name: egress-internal-a
+spec:
+  protocol: IPv4
+  cidrBlock: 172.20.10.0/24
+  gateway: 172.20.10.1
+  excludeIps:
+    - 172.20.10.1
+  natOutgoing: false
+  private: false
+  provider: ovn-internal.tenant-a.ovn
+  vpc: ovn-cluster

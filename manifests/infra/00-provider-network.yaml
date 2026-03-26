@@ -1,6 +1,6 @@
 apiVersion: kubeovn.io/v1
 kind: ProviderNetwork
 metadata:
-  name: pn-mgmt
+  name: pn-external
 spec:
   defaultInterface: eth1

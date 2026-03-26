@@ -9,4 +9,4 @@ metadata:
   name: ovn-vpc-nat-config
   namespace: kube-system
 data:
-  image: docker.io/kubeovn/vpc-nat-gateway:v1.15.0
+  image: docker.io/kubeovn/vpc-nat-gateway:v1.16.0
