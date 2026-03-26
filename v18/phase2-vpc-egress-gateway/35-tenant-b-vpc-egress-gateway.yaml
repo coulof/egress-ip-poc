@@ -13,4 +13,4 @@ spec:
   policies:
     - snat: true
       subnets:
-        - ovn-default
+        - egress-internal-b

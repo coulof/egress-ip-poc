@@ -8,6 +8,7 @@ spec:
   gateway: 172.20.10.1
   excludeIps:
     - 172.20.10.1
+  enableDHCP: true
   natOutgoing: false
   private: false
   provider: egress-internal.tenant-a.ovn
